@@ -40,14 +40,25 @@ class BasePolicy:
         You may find the following documentation helpful:
         https://pytorch.org/docs/stable/distributions.html
         """
+        # Convert observations to torch.Tensor
         observations = np2torch(observations)
-        #######################################################
-        #########   YOUR CODE HERE - 1-4 lines.    ############
 
-        #######################################################
-        #########          END YOUR CODE.          ############
+        # Get action distribution based on observations
+        action_distribution = self.action_distribution(observations)
+
+        # Sample actions from the distribution
+        sampled_actions = action_distribution.sample()
+
         if return_log_prob:
+            # Calculate log probabilities of the sampled actions
+            log_probs = action_distribution.log_prob(sampled_actions).detach().numpy()
+            sampled_actions = sampled_actions.detach().numpy()
+
             return sampled_actions, log_probs
+
+        # Convert sampled actions to numpy array
+        sampled_actions = sampled_actions.detach().numpy()
+
         return sampled_actions
 
 
@@ -66,11 +77,8 @@ class CategoricalPolicy(BasePolicy, nn.Module):
 
         See https://pytorch.org/docs/stable/distributions.html#categorical
         """
-        #######################################################
-        #########   YOUR CODE HERE - 1-2 lines.    ############
-
-        #######################################################
-        #########          END YOUR CODE.          ############
+        logits = self.network(observations)
+        distribution = torch.distributions.Categorical(logits=logits)
         return distribution
 
 
@@ -84,11 +92,7 @@ class GaussianPolicy(BasePolicy, nn.Module):
         """
         nn.Module.__init__(self)
         self.network = network
-        #######################################################
-        #########   YOUR CODE HERE - 1 line.       ############
-
-        #######################################################
-        #########          END YOUR CODE.          ############
+        self.log_std = torch.nn.Parameter(torch.zeros(action_dim))
 
     def std(self):
         """
@@ -98,11 +102,7 @@ class GaussianPolicy(BasePolicy, nn.Module):
         The return value contains the standard deviations for each dimension
         of the policy's actions. It can be computed from self.log_std
         """
-        #######################################################
-        #########   YOUR CODE HERE - 1 line.       ############
-
-        #######################################################
-        #########          END YOUR CODE.          ############
+        std = torch.exp(self.log_std)
         return std
 
     def action_distribution(self, observations):
@@ -122,9 +122,8 @@ class GaussianPolicy(BasePolicy, nn.Module):
             (b) A combination of torch.distributions.Normal
                              and torch.distributions.Independent
         """
-        #######################################################
-        #########   YOUR CODE HERE - 2-4 lines.    ############
-
-        #######################################################
-        #########          END YOUR CODE.          ############
+        mean = self.network(observations)
+        std = self.std()
+        covariance_matrix = torch.diag(torch.square(std))
+        distribution = torch.distributions.MultivariateNormal(mean, covariance_matrix)
         return distribution
