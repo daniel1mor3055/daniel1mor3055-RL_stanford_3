@@ -70,11 +70,22 @@ class PolicyGradient(object):
            Note that the policy is an instance of (a subclass of) nn.Module, so
            you can call the parameters() method to get its parameters.
         """
-        #######################################################
-        #########   YOUR CODE HERE - 8-12 lines.   ############
+        # 1. Create a neural network
+        self.network = build_mlp(
+            input_size=self.observation_dim,
+            output_size=self.action_dim,
+            n_layers=self.config.n_layers,
+            size=self.config.layer_size
+        ).to(device)
 
-        #######################################################
-        #########          END YOUR CODE.          ############
+        # 2. Instantiate the correct policy
+        if self.discrete:
+            self.policy = CategoricalPolicy(self.network)
+        else:
+            self.policy = GaussianPolicy(self.network, self.action_dim)
+
+        # 3. Create an Adam optimizer
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr)
 
     def init_averages(self):
         """
@@ -188,14 +199,18 @@ class PolicyGradient(object):
         all_returns = []
         for path in paths:
             rewards = path["reward"]
-            #######################################################
-            #########   YOUR CODE HERE - 5-10 lines.   ############
+            returns = []
 
-            #######################################################
-            #########          END YOUR CODE.          ############
+            # Initialize G_t as 0
+            G_t = 0
+            for r in reversed(rewards):
+                # Calculate G_t using the formula
+                G_t = r + self.config.gamma * G_t
+                returns.insert(0, G_t)
+
             all_returns.append(returns)
-        returns = np.concatenate(all_returns)
 
+        returns = np.concatenate(all_returns)
         return returns
 
     def normalize_advantage(self, advantages):
@@ -213,11 +228,10 @@ class PolicyGradient(object):
         Note:
         This function is called only if self.config.normalize_advantage is True.
         """
-        #######################################################
-        #########   YOUR CODE HERE - 1-2 lines.    ############
-
-        #######################################################
-        #########          END YOUR CODE.          ############
+        mean_advantage = np.mean(advantages)
+        std_advantage = np.std(advantages)
+        # Adding a small epsilon to avoid division by zero
+        normalized_advantages = (advantages - mean_advantage) / (std_advantage + 1e-8)
         return normalized_advantages
 
     def calculate_advantage(self, returns, observations):
@@ -266,11 +280,20 @@ class PolicyGradient(object):
         observations = np2torch(observations)
         actions = np2torch(actions)
         advantages = np2torch(advantages)
-        #######################################################
-        #########   YOUR CODE HERE - 5-7 lines.    ############
 
-        #######################################################
-        #########          END YOUR CODE.          ############
+        # Get log probabilities of the actions
+        action_dists = self.policy.action_distribution(observations)
+        log_probs = action_dists.log_prob(actions)
+
+        # Zero out the gradients from the previous pass
+        self.optimizer.zero_grad()
+
+        # Compute the loss function
+        loss = -(log_probs * advantages).mean()
+
+        # Backward pass to compute gradients and update the policy
+        loss.backward()
+        self.optimizer.step()
 
     def train(self):
         """
