@@ -45,11 +45,25 @@ class PPO(PolicyGradient):
         advantages = np2torch(advantages)
         old_logprobs = np2torch(old_logprobs)
 
-        #######################################################
-        #########   YOUR CODE HERE - 10-15 lines.   ###########
+        # Get the distribution of actions under the current policy
+        dist = self.policy.action_distribution(observations)
 
-        #######################################################
-        #########          END YOUR CODE.          ############
+        # Compute log probabilities for the actions
+        new_logprobs = dist.log_prob(actions).squeeze()
+
+        # Compute the ratio between new policy and old policy
+        ratio = (new_logprobs - old_logprobs).exp()
+
+        # Compute clipped objective
+        clipped_advantage = torch.clamp(ratio, 1.0 - self.eps_clip, 1.0 + self.eps_clip) * advantages
+
+        # Compute the PPO objective function
+        loss = -torch.min(ratio * advantages, clipped_advantage).mean()
+
+        # Zero out old gradients, backpropagate the new gradients and step
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
     def train(self):
         """

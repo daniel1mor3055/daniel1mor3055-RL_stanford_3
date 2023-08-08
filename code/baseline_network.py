@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from network_utils import build_mlp, device, np2torch
+import torch.nn.functional as F
 
 
 class BaselineNetwork(nn.Module):
@@ -24,11 +25,16 @@ class BaselineNetwork(nn.Module):
         self.lr = self.config.learning_rate
         observation_dim = self.env.observation_space.shape[0]
 
-        #######################################################
-        #########   YOUR CODE HERE - 2-8 lines.   #############
+        # Create the neural network baseline
+        self.network = build_mlp(
+            input_size=observation_dim,
+            output_size=1,
+            n_layers=self.config.n_layers,
+            size=self.config.layer_size
+        )
 
-        #######################################################
-        #########          END YOUR CODE.          ############
+        # Define the optimizer for the baseline
+        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=self.lr)
 
     def forward(self, observations):
         """
@@ -48,11 +54,10 @@ class BaselineNetwork(nn.Module):
         When implementing other methods, you should use this instead of
         directly referencing the network (so that the shape is correct).
         """
-        #######################################################
-        #########   YOUR CODE HERE - 1 lines.     #############
+        # Pass the observations through the network
+        output = self.network(observations)
+        output = output.squeeze()
 
-        #######################################################
-        #########          END YOUR CODE.          ############
         assert output.ndim == 1
         return output
 
@@ -76,11 +81,12 @@ class BaselineNetwork(nn.Module):
         network output back to numpy, which can be done via the numpy() method.
         """
         observations = np2torch(observations)
-        #######################################################
-        #########   YOUR CODE HERE - 1-4 lines.   ############
+        # Use the forward pass of the baseline network to get the predicted value of the state
+        predicted_values = self(observations)
 
-        #######################################################
-        #########          END YOUR CODE.          ############
+        # Compute the advantage estimates
+        advantages = returns - predicted_values.detach().numpy()
+
         return advantages
 
     def update_baseline(self, returns, observations):
@@ -98,8 +104,17 @@ class BaselineNetwork(nn.Module):
         """
         returns = np2torch(returns)
         observations = np2torch(observations)
-        #######################################################
-        #########   YOUR CODE HERE - 4-10 lines.  #############
+        # Zero the gradients of the optimizer
+        self.optimizer.zero_grad()
 
-        #######################################################
-        #########          END YOUR CODE.          ############
+        # Forward pass to get the predicted values
+        predicted_values = self(observations)
+
+        # Compute the Mean Squared Error loss
+        loss = F.mse_loss(predicted_values, returns)
+
+        # Backpropagate the loss
+        loss.backward()
+
+        # Update the weights of the network
+        self.optimizer.step()
